@@ -1,0 +1,20 @@
+# ETH Trend Analyzer v2.0 - Required Dependencies
+
+# WebSocket & HTTP
+websockets>=11.0.3
+aiohttp>=3.8.5
+requests>=2.31.0
+
+# Data Analysis
+pandas>=2.0.3
+numpy>=1.24.3
+
+# Logging & Utilities
+python-dotenv>=1.0.0
+
+# Optional: For better performance
+numexpr>=2.8.4
+
+# Development (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.1

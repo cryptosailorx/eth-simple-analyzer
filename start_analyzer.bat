@@ -1,0 +1,5 @@
+@echo off
+set TELEGRAM_BOT_TOKEN=8255682034:AAGayNR5Rix6qfM07w9aqQJxVGXTeSspB-g
+set TELEGRAM_CHAT_ID=1384576904
+python main.py
+pause
