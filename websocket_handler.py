@@ -1,7 +1,6 @@
 """
-websocket_handler.py
-Basit WebSocket Handler - ETH 1m mumlar
-Binance Futures WebSocket bağlantısı ve veri yönetimi
+websocket_handler_NEW.py
+Real-time Fibonacci Tracking WebSocket Handler
 """
 
 import asyncio
@@ -35,16 +34,13 @@ class SimpleWebSocketHandler:
         logger.info("WebSocket handler initialized")
     
     async def fetch_historical_candles(self, limit: int = 1000) -> bool:
-        """
-        Başlangıç için historical kline verilerini çek
-        Binance REST API kullanarak
-        """
+        """Başlangıç için historical kline verilerini çek"""
         logger.info(f"📥 Fetching last {limit} historical candles...")
         
         params = {
             "symbol": "ETHUSDT",
             "interval": "1m",
-            "limit": min(limit, 1000)  # Binance max 1000
+            "limit": min(limit, 1000)
         }
         
         try:
@@ -60,13 +56,13 @@ class SimpleWebSocketHandler:
             candles = []
             for kline in klines:
                 candle = {
-                    "timestamp": int(kline[0]),
+                    "timestamp": kline[0],
                     "open": float(kline[1]),
                     "high": float(kline[2]),
                     "low": float(kline[3]),
                     "close": float(kline[4]),
                     "volume": float(kline[5]),
-                    "is_closed": True  # Historical data is always closed
+                    "is_closed": True
                 }
                 candles.append(candle)
             
@@ -91,7 +87,7 @@ class SimpleWebSocketHandler:
             return False
     
     async def process_websocket_message(self, message: str) -> None:
-        """WebSocket mesajını işle ve analiz yap"""
+        """WebSocket mesajını işle ve real-time Fibonacci analizi yap"""
         try:
             data = json.loads(message)
             kline_data = data.get('k')
@@ -115,25 +111,63 @@ class SimpleWebSocketHandler:
                 "is_closed": True
             }
             
+            # Real-time Fibonacci analizi - Her yeni mum vs önceki mum
+            if len(self.candle_buffer) > 0:
+                prev_candle = self.candle_buffer[-1]
+                fib_result = self.analyzer.calculate_fibonacci_retracement(prev_candle, candle)
+                
+                current_time = datetime.now().strftime("%H:%M:%S")
+                
+                # Log'a yaz
+                logger.info(f"🕯️  [{current_time}] New candle: ${candle['close']:.2f} | Vol: {candle['volume']:.0f}")
+                logger.info(f"📊 Fibonacci vs Previous: {fib_result['retracement_pct']:.1f}% ({fib_result['fib_level']}) | {fib_result['direction']}")
+                
+                # Console'da detaylı göster
+                prev_range = prev_candle['high'] - prev_candle['low']
+                print(f"🔍 REAL-TIME FIBONACCI ANALYSIS [{current_time}]:")
+                print(f"   Previous Candle: High=${prev_candle['high']:.2f}, Low=${prev_candle['low']:.2f}, Range=${prev_range:.2f}")
+                print(f"   Current Candle: High=${candle['high']:.2f}, Low=${candle['low']:.2f}, Close=${candle['close']:.2f}")
+                print(f"   📐 Fibonacci Level: {fib_result['fib_level']} ({fib_result['retracement_pct']:.1f}%)")
+                print(f"   📊 Direction: {fib_result['direction']}")
+                
+                # Fibonacci seviye analizi
+                fib_level = fib_result['fib_level']
+                if fib_level in [0.382, 0.618]:
+                    print(f"   🎯 GOLDEN RATIO LEVEL!")
+                elif fib_level == 0.5:
+                    print(f"   ⚖️  MIDDLE LEVEL")
+                elif fib_result['retracement_pct'] > 80:
+                    print(f"   ⚠️  STRONG RETRACEMENT")
+                elif fib_result['retracement_pct'] < 20:
+                    print(f"   💪 WEAK RETRACEMENT")
+                
+                print("-" * 70)
+                
+                # Real-time Fibonacci sonucunu Telegram'a gönder
+                if self.telegram_bot and fib_result['range_size'] > 0:
+                    await self.telegram_bot.send_realtime_fibonacci(prev_candle, candle, fib_result)
+                
+            else:
+                current_time = datetime.now().strftime("%H:%M:%S")
+                logger.info(f"🕯️  [{current_time}] First candle: ${candle['close']:.2f} | Volume: {candle['volume']:.0f}")
+            
             # Buffer'a ekle
             self.candle_buffer.append(candle)
             
-            current_time = datetime.now().strftime("%H:%M:%S")
-            logger.info(f"🕯️  [{current_time}] New candle: ${candle['close']:.2f} | Volume: {candle['volume']:.0f}")
-            
-            # Analiz yap
+            # Ana swing analizi yap (5 dakikada bir)
             analysis_result = self.analyzer.perform_analysis(list(self.candle_buffer))
             
             if analysis_result:
-                logger.info("📊 New analysis completed!")
+                logger.info("📊 5-minute swing analysis completed!")
                 
                 # Konsol'da göster
                 summary = self.analyzer.format_analysis_summary(analysis_result)
                 print("\n" + "="*50)
+                print("🔄 5-MINUTE SWING ANALYSIS UPDATE")
                 print(summary)
                 print("="*50 + "\n")
                 
-                # Telegram'a gönder
+                # Telegram'a swing analizi gönder
                 if self.telegram_bot:
                     await self.send_analysis_to_telegram(analysis_result)
             
@@ -145,7 +179,7 @@ class SimpleWebSocketHandler:
             logger.error(f"❌ Error processing WebSocket message: {e}")
     
     async def send_analysis_to_telegram(self, analysis: dict) -> None:
-        """Analiz sonucunu Telegram'a gönder"""
+        """Swing analiz sonucunu Telegram'a gönder"""
         if not self.telegram_bot:
             logger.warning("⚠️  Telegram bot not configured")
             return
@@ -153,7 +187,7 @@ class SimpleWebSocketHandler:
         try:
             await self.telegram_bot.send_analysis(analysis)
         except Exception as e:
-            logger.error(f"❌ Error sending to Telegram: {e}")
+            logger.error(f"❌ Error sending swing analysis to Telegram: {e}")
     
     async def connect_websocket(self) -> None:
         """WebSocket bağlantısını kur ve dinle"""
@@ -171,21 +205,21 @@ class SimpleWebSocketHandler:
                 self.reconnect_attempts = 0
                 logger.info("✅ WebSocket connected successfully!")
                 
-                # İlk analiz yap
+                # İlk swing analiz yap
                 if len(self.candle_buffer) >= self.analyzer.ANALYSIS_WINDOW:
                     initial_analysis = self.analyzer.perform_analysis(list(self.candle_buffer))
                     if initial_analysis:
-                        logger.info("📊 Initial analysis completed")
+                        logger.info("📊 Initial swing analysis completed")
                         summary = self.analyzer.format_analysis_summary(initial_analysis)
                         print("\n" + "="*50)
-                        print("🚀 INITIAL ANALYSIS")
+                        print("🚀 INITIAL SWING ANALYSIS")
                         print(summary)
                         print("="*50 + "\n")
                         
                         if self.telegram_bot:
                             await self.send_analysis_to_telegram(initial_analysis)
                 
-                # Mesajları dinle
+                # Real-time mesajları dinle
                 async for message in websocket:
                     if not self.running:
                         break
@@ -228,7 +262,7 @@ class SimpleWebSocketHandler:
     
     async def start(self) -> bool:
         """Ana başlatma fonksiyonu"""
-        logger.info("🚀 Starting ETH WebSocket handler...")
+        logger.info("🚀 Starting ETH Real-time Fibonacci WebSocket handler...")
         
         # Historical data yükle
         if not await self.fetch_historical_candles(1000):
@@ -260,36 +294,3 @@ class SimpleWebSocketHandler:
         if self.candle_buffer:
             return self.candle_buffer[-1]['close']
         return 0.0
-
-# Test fonksiyonu
-async def test_websocket():
-    """WebSocket handler test"""
-    from simple_analyzer_logfazla import SimpleFibAnalyzer
-    
-    analyzer = SimpleFibAnalyzer()
-    ws_handler = SimpleWebSocketHandler(analyzer)
-    
-    try:
-        # Sadece historical data test et
-        success = await ws_handler.fetch_historical_candles(100)
-        if success:
-            print("✅ Historical data test successful!")
-            
-            # Bir analiz dene
-            analysis = analyzer.perform_analysis(list(ws_handler.candle_buffer))
-            if analysis:
-                print("✅ Analysis test successful!")
-                print(analyzer.format_analysis_summary(analysis))
-            else:
-                print("❌ Analysis test failed!")
-        else:
-            print("❌ Historical data test failed!")
-            
-    except KeyboardInterrupt:
-        print("\n⚠️  Test interrupted by user")
-    finally:
-        ws_handler.stop()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(test_websocket())
