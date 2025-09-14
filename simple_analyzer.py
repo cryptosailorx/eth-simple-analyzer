@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
 
-logging.basicConfig(level=logging.INFO)
+# Ana logger'ı kullan, yeni config yapma
 logger = logging.getLogger(__name__)
 
 class SimpleFibAnalyzer:
