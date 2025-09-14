@@ -1,6 +1,6 @@
 """
-telegram_bot.py
-Basit Telegram Bot - ETH analiz sonuçlarını gönderir
+telegram_bot_UPDATED.py
+Telegram Bot - Real-time Fibonacci + Swing Analysis
 """
 
 import asyncio
@@ -63,8 +63,71 @@ class SimpleTelegramBot:
             logger.error(f"❌ Unexpected error sending message: {e}")
             return False
     
-    def format_analysis_message(self, analysis: Dict) -> str:
-        """Analiz sonucunu Telegram mesajı formatına çevir"""
+    async def send_realtime_fibonacci(self, prev_candle: dict, current_candle: dict, fib_result: dict) -> bool:
+        """Real-time Fibonacci analiz sonucunu Telegram'a gönder"""
+        try:
+            # Fibonacci seviye emoji
+            fib_level = fib_result['fib_level']
+            if fib_level in [0.382, 0.618]:
+                fib_emoji = "🎯"  # Golden ratio
+            elif fib_level == 0.5:
+                fib_emoji = "⚖️"  # Middle
+            elif fib_level in [0.236, 0.786]:
+                fib_emoji = "📐"  # Other levels
+            elif fib_level == 0:
+                fib_emoji = "📊"  # Low level
+            elif fib_level == 1.0:
+                fib_emoji = "🔴"  # Full retracement
+            else:
+                fib_emoji = "📊"  # Default
+            
+            # Retracement strength
+            retracement_pct = fib_result['retracement_pct']
+            if retracement_pct > 80:
+                strength_emoji = "🔥"  # Strong
+            elif retracement_pct > 60:
+                strength_emoji = "💪"  # Medium
+            elif retracement_pct > 30:
+                strength_emoji = "📈"  # Weak
+            else:
+                strength_emoji = "📊"  # Very weak
+            
+            # Direction emoji
+            direction_emoji = {
+                "pullback_after_bullish": "📉 Pullback",
+                "recovery_after_bearish": "📈 Recovery",
+                "invalid": "❓ Invalid"
+            }
+            dir_text = direction_emoji.get(fib_result['direction'], "↔️ Neutral")
+            
+            prev_range = prev_candle['high'] - prev_candle['low']
+            current_time = datetime.now().strftime("%H:%M:%S")
+            
+            message = f"""
+🕯️ <b>Real-time Fibonacci</b> | {current_time}
+
+{fib_emoji} <b>Fibonacci:</b> <code>{fib_level}</code> ({retracement_pct:.1f}%) {strength_emoji}
+{dir_text}
+
+📊 <b>Previous Candle:</b>
+   High: ${prev_candle['high']:.2f} | Low: ${prev_candle['low']:.2f} 
+   Range: ${prev_range:.2f}
+
+🕯️ <b>Current Candle:</b> 
+   High: ${current_candle['high']:.2f} | Low: ${current_candle['low']:.2f}
+   <b>Close: ${current_candle['close']:.2f}</b>
+
+<i>Live tracking every minute...</i>
+            """
+            
+            return await self.send_message(message.strip())
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending real-time fibonacci: {e}")
+            return False
+    
+    def format_swing_analysis_message(self, analysis: Dict) -> str:
+        """Swing analizi sonucunu Telegram mesajı formatına çevir"""
         
         # Direction emoji mapping
         direction_emoji = {
@@ -114,15 +177,15 @@ class SimpleTelegramBot:
             time_str = datetime.now().strftime("%H:%M:%S")
         
         message = f"""
-🎯 <b>ETH Trend Analysis</b>
+🎯 <b>5-Min Swing Analysis</b> | {time_str}
 
 💰 <b>Current Price:</b> ${analysis.get('current_price', 0):.2f}
-📊 <b>Current Mum:</b> H: ${analysis.get('current_high', 0):.2f} | L: ${analysis.get('current_low', 0):.2f}
+📊 <b>Current Candle:</b> H: ${analysis.get('current_high', 0):.2f} | L: ${analysis.get('current_low', 0):.2f}
 
 📈 <b>Direction:</b> {direction} {emoji}
 {conf_emoji} <b>Confidence:</b> {confidence:.1f}%
 
-{fib_emoji} <b>Fibonacci Analysis:</b>
+{fib_emoji} <b>Fibonacci (20-candle avg):</b>
    • Avg Retracement: <code>{analysis.get('avg_fibonacci_retracement', 0):.1f}%</code>
    • Dominant Level: <code>{fib_level}</code>
 
@@ -134,51 +197,74 @@ class SimpleTelegramBot:
 
 🎯 <b>Swing Levels:</b>
    🔺 <b>Last Swing High:</b> ${analysis['last_swing_high']:.2f} <i>({analysis['swing_high_age']} mum önce)</i>
-   🔻 <b>Last Swing Low:</b> ${analysis['last_swing_low']:.2f} <i>({analysis['swing_low_age']} mum önce)</i>"""
+   🔻 <b>Last Swing Low:</b> ${analysis['last_swing_low']:.2f} <i>({analysis['swing_low_age']} mum önce)</i>
+   📊 <b>Count:</b> {analysis.get('total_swing_highs', 0)} highs, {analysis.get('total_swing_lows', 0)} lows"""
         else:
             message += f"""
 
 ⚠️ <b>Swing Levels:</b> <i>Detecting...</i>"""
 
+        # SIDEWAYS durumunda ek bilgi ekle
+        if direction == "SIDEWAYS" and analysis.get('swing_points_found', False):
+            swing_high = analysis['last_swing_high']
+            swing_low = analysis['last_swing_low']
+            current_price = analysis.get('current_price', 0)
+            
+            # Current price'ın swing range'deki pozisyonu
+            swing_range = swing_high - swing_low
+            position_pct = ((current_price - swing_low) / swing_range * 100) if swing_range > 0 else 50
+            
+            if position_pct > 70:
+                sideways_detail = f"📊 <b>Range Position:</b> Upper area ({position_pct:.0f}%) - Near swing high"
+            elif position_pct < 30:
+                sideways_detail = f"📊 <b>Range Position:</b> Lower area ({position_pct:.0f}%) - Near swing low"
+            else:
+                sideways_detail = f"📊 <b>Range Position:</b> Middle area ({position_pct:.0f}%)"
+            
+            message += f"""
+
+{sideways_detail}
+💡 <b>Breakout Levels:</b> Above ${swing_high:.2f} (Bullish) or Below ${swing_low:.2f} (Bearish)"""
+
         message += f"""
 
 📈 <b>Analysis Details:</b>
    • Window: {analysis.get('analysis_window', 20)} candles
-   • Sample Size: {analysis.get('sample_size', 0)} valid pairs
+   • Sample Size: {analysis.get('sample_size', 0)} pairs
    • Total Candles: {analysis.get('candles_analyzed', 0)}
 
-⏰ <b>Time:</b> {time_str}
 🔄 <b>Next Update:</b> {analysis.get('next_update_minutes', 5)} minutes
 
-<i>ETH Trend Analyzer v2.0 - Swing Based</i>
+<i>Real-time Fibonacci + 5-min Swing Analysis</i>
         """
         
         return message.strip()
     
     async def send_analysis(self, analysis: Dict) -> bool:
-        """Analiz sonucunu Telegram'a gönder"""
+        """Swing analiz sonucunu Telegram'a gönder"""
         try:
-            message = self.format_analysis_message(analysis)
+            message = self.format_swing_analysis_message(analysis)
             return await self.send_message(message)
         except Exception as e:
-            logger.error(f"❌ Error formatting analysis message: {e}")
+            logger.error(f"❌ Error formatting swing analysis message: {e}")
             return False
     
     async def send_startup_message(self) -> bool:
         """Sistem başlangıç mesajı"""
         message = f"""
-🚀 <b>ETH Trend Analyzer Started</b>
+🚀 <b>ETH Trend Analyzer v2.0 Started</b>
 
 ✅ WebSocket connection established
-📊 Historical data loaded
+📊 Historical data loaded (1000 candles)
 🔄 Real-time analysis active
 
-<b>Settings:</b>
-• Analysis Window: 20 candles
-• Update Interval: 5 minutes
-• Fibonacci-focused analysis
+<b>Features:</b>
+🕯️ <b>Real-time Fibonacci:</b> Every minute
+📊 <b>Swing Analysis:</b> Every 5 minutes
+🎯 <b>Analysis Window:</b> 20 candles
+📈 <b>Tracking:</b> ETH/USDT 1-minute candles
 
-<i>System online and monitoring ETH/USDT...</i>
+<i>System online and monitoring...</i>
 
 ⏰ Started at: {datetime.now().strftime("%H:%M:%S")}
         """
@@ -206,55 +292,6 @@ class SimpleTelegramBot:
 📱 Chat ID: <code>{self.chat_id}</code>
 ⏰ {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-<i>Ready to send ETH analysis updates...</i>
+<i>Ready for real-time Fibonacci + swing analysis...</i>
         """
         return await self.send_message(test_message.strip())
-
-# Test fonksiyonu
-async def test_telegram_bot():
-    """Telegram bot test"""
-    # Test için dummy credentials - gerçek kullanımda değiştir
-    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-    CHAT_ID = "YOUR_CHAT_ID_HERE"
-    
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ Please set real BOT_TOKEN and CHAT_ID in the test function")
-        return
-    
-    bot = SimpleTelegramBot(BOT_TOKEN, CHAT_ID)
-    
-    try:
-        # Test connection
-        success = await bot.test_connection()
-        if success:
-            print("✅ Telegram bot test successful!")
-            
-            # Test analysis message
-            test_analysis = {
-                "timestamp": datetime.now().isoformat(),
-                "current_price": 4659.83,
-                "direction": "BULLISH",
-                "confidence": 75.5,
-                "avg_fibonacci_retracement": 38.2,
-                "dominant_fib_level": 0.382,
-                "trend_strength": 68,
-                "next_update_minutes": 5,
-                "candles_analyzed": 1000,
-                "analysis_window": 20,
-                "sample_size": 20
-            }
-            
-            await bot.send_analysis(test_analysis)
-            print("✅ Analysis message test successful!")
-            
-        else:
-            print("❌ Telegram bot test failed!")
-            
-    except Exception as e:
-        print(f"❌ Test error: {e}")
-    finally:
-        await bot.close_session()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    asyncio.run(test_telegram_bot())
